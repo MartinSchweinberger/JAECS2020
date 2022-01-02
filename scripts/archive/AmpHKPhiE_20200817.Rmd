@@ -1,0 +1,286 @@
+---
+title: "A corpus-based analysis of ongoing change in the adjective amplifier systems of Hong Kong, Philippine, and Indian English"
+author: Martin Schweinberger
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output: word_document
+---
+
+This document shows an analysis of adjective amplification in Irish English based on the Irish component of the International Corpus of English (ICE). 
+
+In a first step, the session is prepared by clearing the work space, setting options, activating packages and functions, as well as loading relevant functions.
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+# clean current workspace
+rm(list=ls(all=T))                                      
+# load packages
+library(dplyr)  
+library(stringr)
+# set options
+options(stringsAsFactors = F)                           
+options(scipen = 999) 
+options(max.print=10000)
+# define image directory
+imageDirectory <- "images"   
+# specify path to corpra
+hkpath <- "D:\\Uni\\Korpora\\Original\\ICE Hong Kong"
+phipath <- "D:\\Uni\\Korpora\\Original\\ICE Philippines\\Corpus"
+indpath <- "D:\\Uni\\Korpora\\Original\\ICE India\\Corpus"
+biohkpath <- "D:\\Uni\\Korpora\\Metadata/BiodataIceHongKong_new.txt"
+biophipath <- "D:\\Uni\\Korpora\\Metadata/BiodataIcePhilippines.txt"
+bioindpath <- "D:\\Uni\\Korpora\\Metadata/BiodataIceIndia.txt"
+```
+
+Define files
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+icehk_files <- list.files(hkpath, pattern = "[S|s]1[A|a].*.txt", full.names = T)
+icephi_files <- list.files(phipath, pattern = "S1A.*.TXT", full.names = T)
+iceind_files <- list.files(indpath, pattern = "[S|s]1[A|a].*.txt", full.names = T)
+```
+
+Load corpus: HK
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+icehk <- sapply(icehk_files, function(x){
+  x <- scan(x, what = "char", sep = "", quote = "", quiet = T, skipNul = T)
+  x <- paste(x, sep = " ", collapse = " ")
+  x <- str_squish(x)
+})
+# inspect
+str(icehk)
+```
+
+Load corpus: PHI
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+icephi <- sapply(icephi_files, function(x){
+  x <- scan(x, what = "char", sep = "", quote = "", quiet = T, skipNul = T)
+  x <- paste(x, sep = " ", collapse = " ")
+  x <- str_squish(x)
+})
+# inspect
+str(icephi)
+```
+
+Load corpus: IND
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+iceind <- sapply(iceind_files, function(x){
+  x <- scan(x, what = "char", sep = "", quote = "", quiet = T, skipNul = T)
+  x <- paste(x, sep = " ", collapse = " ")
+  x <- str_squish(x)
+})
+# inspect
+str(iceind)
+```
+
+Create corpus tibble: HK
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+icehk_df <- unlist(stringr::str_split(stringr::str_replace_all(icehk, "<ICE-HK:[S|s]1[A|a]-",
+                                                               "~~~<ICE-HK:S1A-"), "~~~"))
+# create df 
+icehk_df <- tibble(1:length(icehk_df),
+                  rep("ICE-HK", length(icehk_df)),
+                  str_remove_all(icehk_df, "#.*"),
+                  str_remove_all(icehk_df, ">.*"), 
+                  icehk_df)
+# add column names
+icehk_df <- icehk_df %>%
+  rename(Id = colnames(icehk_df)[1],
+         Corpus = colnames(icehk_df)[2],
+         File = colnames(icehk_df)[3],
+         Speaker = colnames(icehk_df)[4],
+         SpeechUnit = colnames(icehk_df)[5]) %>%
+  mutate(File = str_remove_all(File, ".*:"),
+         Speaker = str_remove_all(Speaker, ".*#"),
+         ExtraCorpusSpeaker = ifelse(str_detect(Speaker, "^X") == T, 1, 0),
+         Speaker = str_remove_all(Speaker, ".*:"),
+         SpeechUnit = str_remove(SpeechUnit, ".*? "),
+         CleanSpeechUnit = str_remove_all(SpeechUnit, "<unclear>.*?</unclear>"),
+         CleanSpeechUnit = str_remove_all(CleanSpeechUnit, "<&>.*?</&>"),
+         CleanSpeechUnit = str_remove_all(SpeechUnit, "<.*?>"),
+         CleanSpeechUnit = str_remove_all(CleanSpeechUnit, "[^[:alnum:]=\\'\\.\\-\\? ]"),
+         CleanSpeechUnit = str_squish(CleanSpeechUnit)) %>%
+  filter(ExtraCorpusSpeaker == 0,
+         CleanSpeechUnit != "",
+         Speaker  != "") %>%
+  select(-ExtraCorpusSpeaker)
+# inspect
+str(icehk_df)
+```
+
+Extract speech units and word counts: HK
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+WordCount_HK <- icehk_df %>%
+  mutate(WordCount = str_count(CleanSpeechUnit, " ") +1) %>%
+  group_by(File, Speaker) %>%
+  summarise(SpeechUnitCount = n(),
+            WordCount = sum(WordCount))
+# inspect
+head(WordCount_HK)
+```
+
+Create corpus tibble: PHI
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+icephi_df <- unlist(stringr::str_split(stringr::str_replace_all(icephi, "<ICE-PHI:[S|s]1[A|a]-",
+                                                                "~~~<ICE-PHI:S1A-"), "~~~"))
+# create df 
+icephi_df <- tibble(1:length(icephi_df),
+                  rep("ICE-PHI", length(icephi_df)),
+                  str_remove_all(icephi_df, "#.*"),
+                  str_remove_all(icephi_df, ">.*"), 
+                  icephi_df)
+# add column names
+icephi_df <- icephi_df %>%
+  rename(Id = colnames(icephi_df)[1],
+         Corpus = colnames(icephi_df)[2],
+         File = colnames(icephi_df)[3],
+         Speaker = colnames(icephi_df)[4],
+         SpeechUnit = colnames(icephi_df)[5]) %>%
+  mutate(File = str_remove_all(File, ".*:"),
+         Speaker = str_remove_all(Speaker, ".*#"),
+         ExtraCorpusSpeaker = ifelse(str_detect(Speaker, "^X") == T, 1, 0),
+         Speaker = str_remove_all(Speaker, ".*:"),
+         SpeechUnit = str_remove(SpeechUnit, ".*? "),
+         CleanSpeechUnit = str_remove_all(SpeechUnit, "<unclear>.*?</unclear>"),
+         CleanSpeechUnit = str_remove_all(CleanSpeechUnit, "<&>.*?</&>"),
+         CleanSpeechUnit = str_remove_all(SpeechUnit, "<.*?>"),
+         CleanSpeechUnit = str_remove_all(CleanSpeechUnit, "[^[:alnum:]=\\'\\.\\-\\? ]"),
+         CleanSpeechUnit = str_squish(CleanSpeechUnit)) %>%
+  filter(ExtraCorpusSpeaker == 0,
+         CleanSpeechUnit != "") %>%
+  select(-ExtraCorpusSpeaker)
+# inspect
+str(icephi_df)
+```
+
+Create corpus tibble: IND
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+iceind_df <- unlist(stringr::str_split(stringr::str_replace_all(iceind, "<ICE-IND:[S|s]1[A|a]-",
+                                                                "~~~<ICE-IND:S1A-"), "~~~"))
+# create df 
+iceind_df <- tibble(1:length(iceind_df),
+                  rep("ICE-IND", length(iceind_df)),
+                  str_remove_all(iceind_df, "#.*"),
+                  str_remove_all(iceind_df, ">.*"), 
+                  iceind_df)
+# add column names
+iceind_df <- iceind_df %>%
+  rename(Id = colnames(iceind_df)[1],
+         Corpus = colnames(iceind_df)[2],
+         File = colnames(iceind_df)[3],
+         Speaker = colnames(iceind_df)[4],
+         SpeechUnit = colnames(iceind_df)[5]) %>%
+  mutate(File = str_remove_all(File, ".*:"),
+         Speaker = str_remove_all(Speaker, ".*#"),
+         ExtraCorpusSpeaker = ifelse(str_detect(Speaker, "^X") == T, 1, 0),
+         Speaker = str_remove_all(Speaker, ".*:"),
+         SpeechUnit = str_remove(SpeechUnit, ".*? "),
+         CleanSpeechUnit = str_remove_all(SpeechUnit, "<unclear>.*?</unclear>"),
+         CleanSpeechUnit = str_remove_all(CleanSpeechUnit, "<&>.*?</&>"),
+         CleanSpeechUnit = str_remove_all(SpeechUnit, "<.*?>"),
+         CleanSpeechUnit = str_remove_all(CleanSpeechUnit, "[^[:alnum:]=\\'\\.\\-\\? ]"),
+         CleanSpeechUnit = str_squish(CleanSpeechUnit)) %>%
+  filter(ExtraCorpusSpeaker == 0,
+         CleanSpeechUnit != "") %>%
+  select(-ExtraCorpusSpeaker)
+# inspect
+str(iceind_df)
+```
+
+Load biodata
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+biohk <- read.delim(biohkpath, sep = "\t", header = T, quote = "\"", comment.char = "") %>%
+  rename(File = Textcode,
+         Speaker = Speaker.ID)
+biophi <- read.delim(biophipath, sep = "\t", header = T, quote = "\"", comment.char = "") %>%
+  rename(File = text.id,
+         Speaker = spk.ref)
+bioind <- read.delim(bioindpath, sep = "\t", header = T, quote = "\"", comment.char = "") %>%
+  rename(File = text.id,
+         Speaker = spk.ref)
+#inspect
+colnames(biohk); colnames(biophi); colnames(bioind)
+```
+
+Add biodata
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+icehk_info <- left_join(icehk_df, WordCount_HK, by = c("File", "Speaker"))
+icehk_info <- left_join(icehk_info, biohk, by = c("File", "Speaker"))
+icephi_info <- left_join(icephi_df, biophi, by = c("File", "Speaker"))
+iceind_info <- left_join(iceind_df, bioind, by = c("File", "Speaker"))
+```
+
+Remove superfluous columns
+
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+icehk_info <- icehk_info %>%
+  select(-Old.File, -Text.Category, -Subtext, -Description.of.Contents, -Last.Name,
+         -First.Name, -Chinese.Name, -Primary.Education, -Secondary.Education, 
+         -Tertiary.Education, -Professional.Training, -Overseas.Experience, -Affiliations, 
+         -Employer, -Recording.Place) %>%
+  rename(Date = Recording.Date,
+         Ethnicity = Ethnic.Group,
+         L1 = Mother.Tongue,
+         OtherLanguages = Other.Languages,
+         EducationLevel = Educational.Level) %>%
+  mutate(Date = str_remove_all(Date, ".*-"),
+         Gender = ifelse(Gender == "f", "female", 
+                  ifelse(Gender == "m", "male", Gender)))
+icephi_info <- icephi_info %>%
+  select(-id, -orig.id, -file.speaker.id, -subfile.id, -your.id, -text.category,
+         -organizing.body, -first.name, -last.name, -copyright.statement, -recording.place) %>%
+  rename(Date = recording.date,
+         Gender = gender,
+         Age = age,
+         Nationality = nationality,
+         L1 = mother.tongue,
+         Occupation = occupation,
+         EducationLevel = educational.level,
+         SpeechUnitCount = speech.unit.count,
+         WordCount = word.count) %>%
+  mutate(Date = str_remove_all(Date, ".*-"),
+         Date = str_remove_all(Date, "[:alpha:]"),
+         Date = str_squish(Date))
+iceind_info <- iceind_info %>%
+  select(-id, -file.speaker.id, -subfile.id, -place.of.recording, -text.category, -file.wordcount,
+         -communicative.situation, -organising.body, -copyright.statement, -communicative.role,
+         -surname, -forenames, -affiliations, -free.comments, -birthplace, -audience.size,
+         -no.of.participants, -relationship.of.participants) %>%
+  rename(Date = date.of.recording,
+         Age = age,
+         Gender = gender,
+         Nationality = nationality,
+         EducationLevel = education,
+         Occupation = occupation,
+         L1 = mother.tongue,
+         OtherLanguages = other.languages,
+         SpeechUnitCount = speech.unit.count,
+         WordCount = word.count)
+# inspect
+head(icehk_info, 3)#; head(icephi_info, 3); head(iceind_info, 3)
+
+```
+
+ Combine data into a single table
+ 
+```{r amphkphi_01_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice <- merge(icehk_info, icephi_info, all = TRUE)
+ice <- merge(ice, iceind_info, all = TRUE)
+ice <- ice %>%
+  arrange(Corpus, File, Id) %>%
+  mutate(Date = str_remove_all(Date, ".* "),
+         Date = ifelse(nchar(Date) == 2 & str_detect(Date, "^0"), paste("20", Date, sep = ""),
+                ifelse(nchar(Date) == 2 & str_detect(Date, "^9"), paste("19", Date, sep = ""),
+                       Date)),
+         Date = str_replace_all(Date, "1993/94", "1993"),
+         Age = ifelse(Age == "60 or above", "60+", Age))
+# inspect
+head(ice)
+```

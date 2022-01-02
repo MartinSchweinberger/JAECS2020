@@ -1,0 +1,320 @@
+---
+title: "A corpus-based analysis of ongoing change in the adjective amplifier systems of Hong Kong, Philippine, and Indian English - Part 2"
+author: Martin Schweinberger
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output: 
+  word_document:
+    fig_caption: yes
+    pandoc_args: --smart
+bibliography: D:\\BibTex/Bibliography.bib
+---
+
+# Introduction{-}
+
+This document shows an analysis of adjective amplification in Irish English based on the Irish component of the International Corpus of English (ICE). 
+
+# Preparation{-}
+
+In a first step, the session is prepared by clearing the work space, setting options, activating packages and functions, as well as loading relevant functions.
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+# clean current workspace
+rm(list=ls(all=T))                                      
+# establish version control
+library(packrat)
+# initialize packrat
+#init()
+# load packages
+library(tidyverse)  
+library(Boruta)
+library(mlogit)
+library(nnet)
+# set options
+options(stringsAsFactors = F)                           
+options(scipen = 999) 
+options(max.print=10000)
+# define image directory
+imageDirectory <- "images"   
+```
+
+# Load data{-}
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice <- read.delim("D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\data\\editdata//iceamp_04_clean.txt", sep = "\t", header = T)
+# inspect
+head(ice)
+```
+
+# Clean data
+
+## Factorize predictors
+
+## Scale frequency
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice <- ice %>%
+  select(-Id, -Correction, -SpeechUnit, -SpeechUnitCount, -PreContext, -Token, 
+         -PostContext, -PreContextLong, -Amplified) %>%
+  dplyr::mutate(Frequency = as.vector(scale(Frequency)),
+                Gender = factor(Gender),
+                Nationality = factor(Nationality),
+                L1 = factor(L1),
+                EducationLevel = factor(EducationLevel),
+                Priming = factor(Priming),
+                Emotionality = factor(Emotionality),
+                Function = factor(Function),
+                Ethnicity = factor(Ethnicity),
+                OtherLanguages = factor(OtherLanguages),
+                Birthplace = factor(Birthplace),
+                SemanticCategory = factor(SemanticCategory),
+                Speaker = paste0(File, "$", Speaker)) %>%
+  select(-File, -Speaker, -WordCount)
+str(ice)
+```
+
+Determine adjective frequency
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+fadj <- names(table(ice$Adjective))[which(table(ice$Adjective) > 5)]
+fadj
+```
+
+Determine variant frequency
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+famp <- names(table(ice$Variant))[which(table(ice$Variant) > 20)]
+famp
+```
+Collapse infrequent adjectives and amplifiers
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice <- ice %>%
+  mutate(Adjective = ifelse(Adjective %in% fadj, Adjective, "other"),
+         Variant = ifelse(Variant %in% famp, Variant, "other"),
+         Adjective = factor(Adjective),
+         Variant = factor(Variant))
+str(ice)
+```
+
+# Variant by Corpus and Age
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice %>%
+  mutate(Age = ifelse(Age == "16-25"|Age == "17-25"|Age == "18-25", 3, 
+               ifelse(Age == "26-40"|Age == "26-41", 2, 
+               ifelse(Age == "41+"|Age == "42+", 1, Age))),
+         Corpus = ifelse(Corpus == "ICE-HK", "ICE Hong Kong",
+                  ifelse(Corpus == "ICE-IND", "ICE India", "ICE Philippines"))) %>%
+  group_by(Corpus, Age, Variant) %>%
+  summarise(Frequency = n()) %>%
+  group_by(Corpus, Age) %>%
+  mutate(AllSlots = sum(Frequency),
+         Percent = round(Frequency/AllSlots*100, 1)) %>%
+  select(-Frequency, -AllSlots) %>%
+  ggplot(aes(x = Age, y = Percent, 
+             group = Variant, color = Variant, linetype = Variant)) +
+  facet_grid(cols = vars(Corpus)) +
+  geom_line() + 
+  coord_cartesian(ylim = c(0, 100)) +
+  theme_set(theme_bw(base_size = 10)) +
+  theme(legend.position="top", 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.text.x = element_text(size=10)) +
+  scale_color_manual(breaks = c("other", "pretty", "really", 
+                                "so", "totally", "very"),
+                     values = c("gray70", "gray60", "gray50", 
+                                "gray40", "gray30", "gray20")) +
+  scale_linetype_manual(breaks = c("other", "pretty", "really", 
+                                   "so", "totally", "very"),
+                        values = c(6, 5, 4, 3, 2, 1)) + 
+  scale_x_discrete(breaks = 1:3, 
+                   labels = c("41+", "26-41", "16-25")) +
+  ggsave(file = 
+           "D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images/VariantAgeCorpus.png",
+         height = 4,  width = 6, dpi = 320)
+  
+```
+
+# Variant by Corpus and Age and Function
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice %>%
+  mutate(Age = ifelse(Age == "16-25"|Age == "17-25"|Age == "18-25", 3, 
+               ifelse(Age == "26-40"|Age == "26-41", 2, 
+               ifelse(Age == "41+"|Age == "42+", 1, Age))),
+         Corpus = ifelse(Corpus == "ICE-HK", "ICE Hong Kong",
+                  ifelse(Corpus == "ICE-IND", "ICE India", "ICE Philippines"))) %>%
+  group_by(Corpus, Age, Variant, Function) %>%
+  summarise(Frequency = n()) %>%
+  group_by(Corpus, Age, Function) %>%
+  mutate(AllSlots = sum(Frequency),
+         Percent = round(Frequency/AllSlots*100, 1)) %>%
+  select(-Frequency, -AllSlots) %>%
+  ggplot(aes(x = Age, y = Percent, 
+             group = Variant, color = Variant, linetype = Variant)) +
+  facet_grid(cols = vars(Corpus), rows=vars(Function)) +
+  geom_line() + 
+  coord_cartesian(ylim = c(0, 100)) +
+  theme_set(theme_bw(base_size = 10)) +
+  theme(legend.position="top", 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.text.x = element_text(size=10)) +
+  scale_color_manual(breaks = c("other", "pretty", "really", 
+                                "so", "totally", "very"),
+                     values = c("gray70", "gray60", "gray50", 
+                                "gray40", "gray30", "gray20")) +
+  scale_linetype_manual(breaks = c("other", "pretty", "really", 
+                                   "so", "totally", "very"),
+                        values = c(6, 5, 4, 3, 2, 1)) + 
+  scale_x_discrete(breaks = 1:3, 
+                   labels = c("41+", "26-41", "16-25")) +
+  ggsave(file = 
+           "D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images/VariantAgeCorpusFunction.png",
+         height = 4,  width = 6, dpi = 320)
+  
+```
+
+
+# Split data by corpus
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+hk <- ice %>%
+  filter(Corpus == "ICE-HK") %>%
+  select(-Corpus)
+# inspect
+head(hk)
+```
+
+Remove NA
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+nrow(hk)
+hk <- hk %>%
+  na.omit()
+nrow(hk)
+```
+
+# Boruta
+
+Identify variables to include in regression modeling.
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+# create data for boruta
+borutadata_hk <- hk
+# run 1
+set.seed(2020082401)
+boruta_hk <- Boruta(Variant ~., data = borutadata_hk, maxRuns = 1000)
+print(boruta_hk)
+```
+
+Boruta: second run
+
+Remove variables confirmed non-important + next run
+
+```{r amphkpie_02_11, echo=T, eval = T, message=FALSE, warning=FALSE}
+# create vector of variables deemed not important
+rejected <- names(boruta_hk$finalDecision)[which(boruta_hk$finalDecision == "Rejected")]
+# update data for boruta
+borutadata_hk <- borutadata_hk %>%
+  dplyr::select(-rejected)
+# run 2
+set.seed(2020082402)
+boruta_hk <- Boruta(Variant ~., data = borutadata_hk, maxRuns = 1000)
+print(boruta_hk)
+```
+
+Visualize Boruta
+
+```{r amphkpie_02_15, echo=T, eval = T, message=FALSE, warning=FALSE}
+png("D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images/Boruta_hk.png",  width = 1500, height = 750)
+par(mar = c(18, 8, 4, 2) + 0.1)
+plot(boruta_hk, cex.axis=2, las=2, xlab="", ylab = "", cex = 2, 
+     col = c(rep("grey50", 15), rep("grey90",3)))
+abline(v = 3.5, lty = "dashed")
+mtext("Predictors", 1, line = 16, at = 7, cex = 3)
+mtext("Control", 1, line = 16, at = 2, cex = 3)
+mtext("Importance", 2, line = 2.5, at = 5, cex = 3, las = 0)
+dev.off()
+plot(boruta_hk, cex.axis=2, las=2, xlab="", ylab = "", cex = 2, 
+     col = c(rep("grey50", 15), rep("grey90",3)))
+abline(v = 3.5, lty = "dashed")
+mtext("Predictors", 1, line = 16, at = 7, cex = 3)
+mtext("Control", 1, line = 16, at = 2, cex = 3)
+mtext("Importance", 2, line = 2.5, at = 5, cex = 3, las = 0)
+par(mar = c(5, 4, 4, 2) + 0.1)
+```
+
+# Regression analysis
+
+Load packages, set options, create base-line fixed-effects models
+
+```{r amphkpie_02_21, echo=T, eval = T, message=FALSE, warning=FALSE}
+# load library
+library(rms)
+library(car)
+# set options
+hkdf <- as.data.frame(hk)
+options(contrasts  =c("contr.treatment", "contr.poly"))
+hkdf_dist <- datadist(hkdf)
+options(datadist = "hkdf_dist")
+# generate initial minimal regression model 
+m0 = multinom(Variant ~ 1, data = hkdf)
+# inspect results
+summary(m0)
+```
+
+## Model fitting{-}
+
+Step-wise step-up
+
+```{r amphkpie_02_23, echo=T, eval = T, message=FALSE, warning=FALSE}
+# extract AICs
+aic.m0 <- AIC(logLik(m0))
+# inspect AICs
+aic.m0
+```
+
+Automated model fitting
+
+```{r amphkpie_02_27, echo=T, eval = T, message=FALSE, warning=FALSE}
+library(MASS)
+# Fit the full model 
+#full.model <- multinom(Variant ~ (Date + Gender + Age + Nationality + L1 + EducationLevel + OtherLanguages + Birthplace + Ethnicity + Adjective + Variant + Function + Frequency + Priming + Gradability + SemanticCategory + Emotionality)^3, data = hkdf)
+# Stepwise regression model
+step.model <- step(m0, scope = . ~ .^3, direction = "both", trace = FALSE)
+summary(step.model)
+```
+
+Create final model
+
+```{r amphkpie_02_27, echo=T, eval = T, message=FALSE, warning=FALSE}
+mf_hk <- multinom(Variant ~ (Date + Gender + Age + Nationality + L1 + EducationLevel + OtherLanguages + Birthplace + Ethnicity + Adjective + Variant + Function + Frequency + Priming + Gradability + SemanticCategory + Emotionality)^3, data = hkdf)
+```
+
+Visualize effects
+
+```{r amphkpie_02_27, echo=T, eval = T, message=FALSE, warning=FALSE}
+library(effects)
+png("D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images/effectsfinalmodel.png",  width = 960, height = 480) 
+plot(allEffects(mf_hk), type="response", ylim=c(0,1), grid=TRUE, 
+     lines = list(col="black",
+                  lty = 1,
+                  confint=list(style="bars",
+                               col = "grey80")), 
+     ylab = "Probability")
+dev.off()
+plot(allEffects(mf_hk), type="response", ylim=c(0,1), grid=TRUE, 
+     lines = list(col="black",
+                  lty = 1,
+                  confint=list(style="bars",
+                               col = "grey80")), 
+     ylab = "Probability")
+```
+
+
+
+
+
+

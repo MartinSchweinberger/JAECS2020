@@ -1,0 +1,319 @@
+---
+title: "A corpus-based analysis of ongoing change in the adjective amplifier systems of Hong Kong, Philippine, and Indian English - Part 2"
+author: Martin Schweinberger
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output: 
+  word_document:
+    fig_caption: yes
+    pandoc_args: --smart
+bibliography: D:\\BibTex/Bibliography.bib
+---
+
+# Introduction{-}
+
+This document shows an analysis of adjective amplification in Irish English based on the Irish component of the International Corpus of English (ICE). 
+
+# Preparation{-}
+
+In a first step, the session is prepared by clearing the work space, setting options, activating packages and functions, as well as loading relevant functions.
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+# clean current workspace
+rm(list=ls(all=T))                                      
+# establish version control
+library(packrat)
+# initialize packrat
+#init()
+# load packages
+library(tidyverse)  
+library(Boruta)
+library(mlogit)
+library(nnet)
+# set options
+options(stringsAsFactors = F)                           
+options(scipen = 999) 
+options(max.print=10000)
+# define image directory
+imageDirectory <- "images"   
+```
+
+# Load data{-}
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice <- read.delim("D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\data\\editdata//iceamp_04_clean.txt", sep = "\t", header = T)
+# inspect
+head(ice)
+```
+
+# Clean data
+
+## Factorize predictors
+
+## Scale frequency
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice <- ice %>%
+  select(-Id, -Correction, -SpeechUnit, -SpeechUnitCount, -PreContext, -Token, -L1, 
+         -PostContext, -PreContextLong, -Amplified, -Nationality, -OtherLanguages, -Birthplace) %>%
+  dplyr::mutate(Frequency = as.vector(scale(Frequency)),
+                Gender = factor(Gender),
+                EducationLevel = factor(EducationLevel),
+                Priming = factor(Priming),
+                Emotionality = factor(Emotionality),
+                Function = factor(Function),
+                Ethnicity = factor(Ethnicity),
+                SemanticCategory = factor(SemanticCategory),
+                Speaker = paste0(File, "$", Speaker)) %>%
+  select(-File, -WordCount)
+str(ice)
+```
+
+Determine adjective frequency
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+fadj <- names(table(ice$Adjective))[which(table(ice$Adjective) > 15)]
+fadj
+```
+
+Determine variant frequency
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+famp <- names(table(ice$Variant))[which(table(ice$Variant) > 50)]
+famp
+```
+Collapse infrequent adjectives and amplifiers
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice <- ice %>%
+  mutate(Adjective = ifelse(Adjective %in% fadj, Adjective, "other"),
+         Variant = ifelse(Variant %in% famp, Variant, "other"),
+         Adjective = factor(Adjective),
+         Variant = factor(Variant)) %>%
+  group_by(Corpus) %>%
+  mutate(Frequency = scale(Frequency))
+str(ice)
+```
+
+# Variant by Corpus and Age
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice %>%
+  mutate(Age = ifelse(Age == "16-25"|Age == "17-25"|Age == "18-25", 3, 
+               ifelse(Age == "26-40"|Age == "26-41", 2, 
+               ifelse(Age == "41+"|Age == "42+", 1, Age))),
+         Corpus = ifelse(Corpus == "ICE-HK", "ICE Hong Kong",
+                  ifelse(Corpus == "ICE-IND", "ICE India", "ICE Philippines"))) %>%
+  group_by(Corpus, Age, Variant) %>%
+  summarise(Frequency = n()) %>%
+  group_by(Corpus, Age) %>%
+  mutate(AllSlots = sum(Frequency),
+         Percent = round(Frequency/AllSlots*100, 1)) %>%
+  select(-Frequency, -AllSlots) %>%
+  ggplot(aes(x = Age, y = Percent, 
+             group = Variant, color = Variant, linetype = Variant)) +
+  facet_grid(cols = vars(Corpus)) +
+  geom_line() + 
+  coord_cartesian(ylim = c(0, 100)) +
+  theme_set(theme_bw(base_size = 10)) +
+  theme(legend.position="top", 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.text.x = element_text(size=10)) +
+  scale_color_manual(breaks = c("other", "really", "so", "very"),
+                     values = c("gray80", "gray60", "gray40", "gray20")) +
+  scale_linetype_manual(breaks = c("other", "really", "so", "very"),
+                        values = c(4, 3, 2, 1)) + 
+  scale_x_discrete(breaks = 1:3, 
+                   labels = c("41+", "26-41", "16-25")) +
+  ggsave(file = 
+           "D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images/VariantAgeCorpus.png",
+         height = 4,  width = 6, dpi = 320)
+  
+```
+
+# Variant by Corpus and Age and Function
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+ice %>%
+  mutate(Age = ifelse(Age == "16-25"|Age == "17-25"|Age == "18-25", 3, 
+               ifelse(Age == "26-40"|Age == "26-41", 2, 
+               ifelse(Age == "41+"|Age == "42+", 1, Age))),
+         Corpus = ifelse(Corpus == "ICE-HK", "ICE Hong Kong",
+                  ifelse(Corpus == "ICE-IND", "ICE India", "ICE Philippines"))) %>%
+  group_by(Corpus, Age, Variant, Function) %>%
+  summarise(Frequency = n()) %>%
+  group_by(Corpus, Age, Function) %>%
+  mutate(AllSlots = sum(Frequency),
+         Percent = round(Frequency/AllSlots*100, 1)) %>%
+  select(-Frequency, -AllSlots) %>%
+  ggplot(aes(x = Age, y = Percent, 
+             group = Variant, color = Variant, linetype = Variant)) +
+  facet_grid(cols = vars(Corpus), rows=vars(Function)) +
+  geom_line() + 
+  coord_cartesian(ylim = c(0, 100)) +
+  theme_set(theme_bw(base_size = 10)) +
+  theme(legend.position="top", 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.text.x = element_text(size=10)) +
+  scale_color_manual(breaks = c("other", "really", "so", "very"),
+                     values = c("gray80", "gray60", "gray40", "gray20")) +
+  scale_linetype_manual(breaks = c("other", "really", "so", "very"),
+                        values = c(4, 3, 2, 1)) +  
+  scale_x_discrete(breaks = 1:3, 
+                   labels = c("41+", "26-41", "16-25")) +
+  ggsave(file = 
+           "D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images/VariantAgeCorpusFunction.png",
+         height = 4,  width = 6, dpi = 320)
+  
+```
+# PHI{-}
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+phi <- ice %>%
+  ungroup() %>%
+  filter(Corpus == "ICE-PHI") %>%
+  select(-Corpus, -Speaker, -Ethnicity) %>%
+  droplevels()
+# inspect
+head(phi)
+```
+
+Remove NA
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+nrow(phi)
+phi <- phi %>%
+  na.omit() %>%
+  mutate(Age = factor(Age),
+         Date = ifelse(Date == "1991"|Date == "1992", "Before 1993", "After 1998"),
+         Date = factor(Date, levels = c("Before 1993", "After 1998")))
+  
+nrow(phi)
+```
+
+# Random forest
+
+Identify variables to include in regression modeling.
+
+```{r amphkpie_02_01, echo=T, eval = T, message=FALSE, warning=FALSE}
+library(randomForest)
+set.seed(2020082401)
+rf_phi <- randomForest(Variant ~., data = phi, ntree=3000, proximity=TRUE, importance=TRUE)
+# inspect rf results
+rf_phi 
+```
+
+Plot out-of-bag error frequency
+
+```{r l2amp_03_21, echo=T, eval = T, message=FALSE, warning=FALSE}
+# plot new precision/error rate
+oob.error.data <- data.frame(
+  Trees=rep(1:nrow(rf_phi$err.rate), times=5),
+  Type=rep(c("OOB", "other", "really", "so", "very"), each=nrow(rf_phi$err.rate)),
+  Error=c(rf_phi$err.rate[,"OOB"],
+          rf_phi$err.rate[,"other"],
+          rf_phi$err.rate[,"really"],
+          rf_phi$err.rate[,"so"],
+          rf_phi$err.rate[,"very"]))
+ggplot(data=oob.error.data, aes(x=Trees, y=Error)) +
+  geom_line(aes(color=Type))
+```
+
+Now, we check the error rates and accuracy and also check how much the model performs better than a base-line model.
+
+```{r l2amp_03_23, echo=T, eval = T, message=FALSE, warning=FALSE}
+# determine accuracy by prediction
+library(caret)
+# prediction
+pnsrf <- predict(rf_phi, phi)
+confusionMatrix(pnsrf, phi$Variant)
+# calculate increase in prediction accuracy compared to base-line model
+cm <- confusionMatrix(pnsrf, phi$Variant)
+round(cm[3]$overall[[1]]/cm[3]$overall[[5]]*100, 2) - 100
+```
+
+Now, we inspect which variables are important for the predictions.
+
+```{r l2amp_03_33, echo=T, eval = T, message=FALSE, warning=FALSE}
+png("D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images//VarImp_IcePhi.png",  width = 700, height = 500) # save plot
+varImpPlot(rf_phi, main = "", pch = 20, cex = 1.5) 
+dev.off()
+varImpPlot(rf_phi, main = "", pch = 20, cex = 1.5)
+```
+
+# Prediction
+
+
+```{r amphkpie_02_21, echo=T, eval = T, message=FALSE, warning=FALSE}
+pphi_rf <- predict(rf_phi, phi, type = "prob")
+phi_pred <- cbind(phi, pphi_rf)
+pphi <- phi_pred %>%
+  gather(PredictedVariant, Probability, other:very)
+# inspect
+head(pphi)
+
+```
+
+
+```{r amphkpie_02_21, echo=T, eval = T, message=FALSE, warning=FALSE}
+pphi %>%
+  select(Age, Probability, Function, Gender, PredictedVariant) %>%
+  mutate(Age = ifelse(Age == "16-25", 3, 
+               ifelse(Age == "26-40", 2, 
+               ifelse(Age == "41+", 1, Age)))) %>%
+  group_by(Age, Function, Gender, PredictedVariant) %>%
+  summarise(Probability = mean(Probability)) %>%
+  ggplot(aes(x = Age, y = Probability, 
+             group = PredictedVariant, color = PredictedVariant, linetype = PredictedVariant)) +
+  geom_line() + 
+  facet_grid(cols = vars(Gender), rows = vars(Function)) +
+  theme_set(theme_bw(base_size = 10)) +
+  theme(legend.position="top", 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.text.x = element_text(size=10)) +
+  scale_color_manual(breaks = c("other", "really", "so", "very"),
+                     values = c("gray80", "gray60", "gray40", "gray20")) +
+  scale_linetype_manual(breaks = c("other", "really", "so", "very"),
+                        values = c(4, 3, 2, 1)) +  
+  scale_x_continuous(breaks = 1:3, 
+                   labels = c("41+", "26-40", "16-25")) +
+  ggsave(file = 
+         "D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images/VariantAgeFunction_Prob_Phi.png",
+         height = 4,  width = 6, dpi = 320)
+```
+
+```{r amphkpie_02_21, echo=T, eval = T, message=FALSE, warning=FALSE}
+pphi %>%
+  select(Date, Probability, Function, Gender, PredictedVariant) %>%
+  group_by(Date, Function, Gender, PredictedVariant) %>%
+  summarise(Probability = mean(Probability)) %>%
+  ggplot(aes(x = Date, y = Probability, 
+             group = PredictedVariant, color = PredictedVariant, linetype = PredictedVariant)) +
+  geom_smooth(se = F, span = 1) + 
+  facet_grid(cols = vars(Gender), rows = vars(Function)) +
+  theme_set(theme_bw(base_size = 10)) +
+  theme(legend.position="top", 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.text.x = element_text(size=10)) +
+  scale_color_manual(breaks = c("other", "really", "so", "very"),
+                     values = c("gray80", "gray60", "gray40", "gray20")) +
+  scale_linetype_manual(breaks = c("other", "really", "so", "very"),
+                        values = c(4, 3, 2, 1)) +  
+  ggsave(file = 
+         "D:\\Uni\\Projekte\\02-Intensification\\AmpHKPIE\\images/VariantDateFunction_Prob_Phi.png",
+         height = 4,  width = 6, dpi = 320)
+```
+
+
+
+
+
+
+
+
+
+
+
